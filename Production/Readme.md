@@ -1,1 +1,1 @@
-# Android Application for mobile development
+# Android Application for image classification
