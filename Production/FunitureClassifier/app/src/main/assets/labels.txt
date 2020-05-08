@@ -1,0 +1,5 @@
+bed
+chair
+sofa
+swivelchair
+table
