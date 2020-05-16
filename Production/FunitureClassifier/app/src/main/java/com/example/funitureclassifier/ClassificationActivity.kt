@@ -1,11 +1,11 @@
 package com.example.funitureclassifier
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Bundle
-import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView
@@ -17,8 +17,8 @@ import androidx.camera.core.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import org.tensorflow.lite.Interpreter
 import java.util.concurrent.Executors
+import kotlin.text.*
 
 class ClassificationActivity : AppCompatActivity(), LifecycleOwner {
 
@@ -30,7 +30,6 @@ class ClassificationActivity : AppCompatActivity(), LifecycleOwner {
     private var textResult2: TextView? = null
     private var textResult3: TextView? = null
 
-    private val options = Interpreter.Options()
     private lateinit var viewFinder: TextureView
 
     private var imageClassifier:ImageClassifier? = null
@@ -42,7 +41,6 @@ class ClassificationActivity : AppCompatActivity(), LifecycleOwner {
         viewFinder = findViewById(R.id.view_finder)
         imageClassifier = ImageClassifier(this)
 
-//        Log.d("Labels","Labels are $labels")
         if (allPermissionsGranted()) {
             viewFinder.post { startCamera() }
 
@@ -84,6 +82,7 @@ class ClassificationActivity : AppCompatActivity(), LifecycleOwner {
             )
         }.build()
 
+        // perform image analysis
         val imageAnalysis = ImageAnalysis(analyzerConfig).apply {
             setAnalyzer(executor, Classify())
         }
@@ -113,6 +112,7 @@ class ClassificationActivity : AppCompatActivity(), LifecycleOwner {
     }
 
     inner class Classify: ImageAnalysis.Analyzer {
+        @SuppressLint("SetTextI18n")
         override fun analyze(imageProxy: ImageProxy?, rotationDegrees: Int) {
             // get bitmap from the camera finder view
             val imgBitmap = rotateImage(viewFinder.bitmap,
@@ -120,9 +120,15 @@ class ClassificationActivity : AppCompatActivity(), LifecycleOwner {
             val recognitions = imageClassifier!!.classifyImage(
                 imgBitmap, rotationDegrees)
             runOnUiThread {
-                textResult1!!.text = recognitions[0].toString()
-                textResult2!!.text = recognitions[1].toString()
-                textResult3!!.text = recognitions[2].toString()
+                val empty = "       "
+                textResult1!!.text = recognitions[0].title + empty +
+                        String.format("%.2f%%", recognitions[0].confidence!! * 100.0f)
+
+                textResult2!!.text = recognitions[1].title + empty +
+                        String.format("%.2f%%", recognitions[1].confidence!! * 100.0f)
+
+                textResult3!!.text = recognitions[2].title + empty+
+                        String.format("%.2f%%", recognitions[2].confidence!! * 100.0f)
 
             }
         }

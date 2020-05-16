@@ -34,6 +34,7 @@ class ImageClassifier constructor(activity: Activity) {
     private var imageSizeX:Int? = null
     private var imageSizeY:Int? = null
     private var interpreter: Interpreter? = null
+    private val options = Interpreter.Options()
     private var labels: List<String>? = null
     private var preprocessNormalizeOp : TensorOperator? = null
     private var postProcessNormalizeOp : TensorOperator? = null
@@ -45,16 +46,19 @@ class ImageClassifier constructor(activity: Activity) {
 
 
     init {
+        // get model from the assets
         val model = FileUtil.loadMappedFile(activity, MODEL_FILENAME)
 
+        // load the model interpreter
         try {
-            interpreter = Interpreter(model)
+            interpreter = Interpreter(model, options)
         }catch (e: Exception) {
             throw RuntimeException(e)
         }
 
+        // load labels from the disk
         labels = FileUtil.loadLabels(activity, LABEL_FILENAME)
-        // load model from assets
+        // Get input sizes
         val imageTensorIndex = 0
         val imageShape = interpreter!!.getInputTensor(imageTensorIndex).shape()
         imageSizeY = imageShape[1]
@@ -67,21 +71,34 @@ class ImageClassifier constructor(activity: Activity) {
             interpreter!!.getOutputTensor(probabilityTensorIndex).shape()
         probabilityDataType =
             interpreter!!.getOutputTensor(probabilityTensorIndex).dataType()
-        // Creates the input tensor.
 
+        // set mean to 0.0f and std 0.0f to pybass normalization
+        preprocessNormalizeOp = NormalizeOp(IMAGE_MEAN, IMAGE_STD)
+        
+        // operation to de-quantize output probability
         postProcessNormalizeOp = NormalizeOp(PROBABILITY_MEAN, PROBABILITY_STD)
+
+        // creates an input tensor
         inputImageBuffer = TensorImage(imageDataType)
     }
 
+    // classify image, running inference and returning labelled probabilities
     fun classifyImage(bitmap:Bitmap, sensorOrientation: Int):
             List<Result>{
 
+        
         inputImageBuffer = loadImage(bitmap, sensorOrientation)
+
         // Creates the output tensor and its processor.
         outputProbabilityBuffer =
             TensorBuffer.createFixedSize(probabilityShape, probabilityDataType)
+        
+        // preprocessor of output probability
         probabilityProcessor = TensorProcessor.Builder().add(postProcessNormalizeOp).build()
+        
+        // run inference
         interpreter!!.run(inputImageBuffer.buffer, outputProbabilityBuffer.buffer.rewind())
+
         val labeledProbability =
             TensorLabel(labels!!, probabilityProcessor.process(outputProbabilityBuffer))
                 .mapWithFloatValue
@@ -90,11 +107,10 @@ class ImageClassifier constructor(activity: Activity) {
     }
 
 
-    // Loads bitmap into a TensorImage.
+    // Loads bitmap into a TensorImage and applies preprocessing 
     private fun loadImage(bitmap: Bitmap, sensorOrientation: Int): TensorImage {
         inputImageBuffer.load(bitmap)
         // Creates processor for the TensorImage.
-        preprocessNormalizeOp = NormalizeOp(IMAGE_MEAN, IMAGE_STD)
         val cropSize = bitmap.width.coerceAtMost(bitmap.height)
         val numRotation = sensorOrientation / 90
         val imageProcessor = ImageProcessor.Builder()
@@ -106,6 +122,7 @@ class ImageClassifier constructor(activity: Activity) {
         return imageProcessor.process(inputImageBuffer)
     }
 
+    // return top-k probability
     private fun getTopKProbability(labelProb: Map<String, Float>): List<Result> {
         val pq = PriorityQueue<Result>(
             MAX_RESULTS,
@@ -129,8 +146,8 @@ class ImageClassifier constructor(activity: Activity) {
                        private var location: RectF?) {
         override fun toString(): String {
             var resultString = ""
-//            if (id != null) resultString += "[$id] "
-            if (title != null) resultString += title + " "
+            if (id != null) resultString += "[$id] "
+            if (title != null) resultString += "$title "
             if (confidence != null) resultString += String.format("(%.1f%%) ", confidence * 100.0f)
             if (location != null) resultString += location!!.toString() + " "
             return resultString.trim { it <= ' ' }
@@ -152,8 +169,12 @@ object Keys {
     // model path
     const val MODEL_FILENAME = "tflite_model.tflite"
     const val MAX_RESULTS = 3
+
+    // set mean to  127.0f and std 128.0f to de-quantize during preprocessing
     const val IMAGE_MEAN = 127.0f
     const val IMAGE_STD = 128.0f
+
+    // set mean to 0.0f and std 255.0f bypass normalization
     const val PROBABILITY_MEAN = 0.0F
     const val PROBABILITY_STD = 1.0f
 }
